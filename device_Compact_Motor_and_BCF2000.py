@@ -1,6 +1,13 @@
-# name=Mackie Control Universal
-# url=
-# supportedDevices=X-Touch
+# name=MCUE Motor,Compact,BCR2000
+# url=https://forum.image-line.com/viewtopic.php?f=1994&t=257782
+# supportedDevices=Behringer Motor, Compact and BCF2000
+###########################################################################################
+# History (as compared to default Mackie Script at 20210520)
+# Commented out unnecesary scribble strip processing (SendMsg)
+# Added option to default JogDial to the PlayList (uncomment line around #254 for this functionality)
+# 20210519 Redirected useful messages to FL Studio hint panel (none of these devices have a suitable display)
+# 20210520 Improved banking such that selected bank tracks will always show in FL UI
+###########################################################################################
 
 import patterns
 import mixer
@@ -126,7 +133,6 @@ class TMackieCU():
 
 		self.SetPage(self.Page)
 		self.OnSendTempMsg('Linked to ' + ui.getProgTitle() + ' (' + ui.getVersion() + ')', 2000);
-		print('OnInit ready')
 
 	def OnDeInit(self):
 
@@ -143,8 +149,6 @@ class TMackieCU():
 			self.SendMsg('', 1)
 			self.SendTimeMsg('')
 			self.SendAssignmentMsg('  ')
-
-		print('OnDeInit ready')
 
 	def OnDirtyMixerTrack(self, SetTrackNum):
 
@@ -246,6 +250,9 @@ class TMackieCU():
 		CutCopyMsgT = ('Cut', 'Copy', 'Paste', 'Insert', 'Delete')  #FPT_Cut..FPT_Delete
 
 		if (event.midiId == midi.MIDI_CONTROLCHANGE):
+    		# Uncomment this next line to default JogDial operations to the PlayList
+			#ui.setFocused(midi.widPlaylist)
+			########################################################################
 			if (event.midiChan == 0):
 				event.inEv = event.data2
 				if event.inEv >= 0x40:
@@ -335,6 +342,11 @@ class TMackieCU():
 						if event.data2 > 0:
 							self.SetFirstTrack(self.FirstTrackT[self.FirstTrack] - 8 + int(event.data1 == 0x2F) * 16)
 							device.dispatch(0, midi.MIDI_NOTEON + (event.data1 << 8) + (event.data2 << 16))
+							# 20210520 Improved banking such that selected bank tracks will always show in FL UI
+							n=0
+							if event.data1 == 0x2F: n=7
+							mixer.setTrackNumber((self.FirstTrackT[self.FirstTrack])+n, midi.curfxScrollToMakeVisible)
+							#######################################################################################
 					elif (event.data1 == 0x30) | (event.data1 == 0x31):
 						if event.data2 > 0:
 							self.SetFirstTrack(self.FirstTrackT[self.FirstTrack] - 1 + int(event.data1 == 0x31) * 2)
@@ -576,9 +588,11 @@ class TMackieCU():
 				event.handled = False
 
 	def SendMsg(self, Msg, Row = 0):
-		sysex = bytearray([0xF0, 0x00, 0x00, 0x66, 0x14, 0x12, (self.LastMsgLen + 1) * Row]) + bytearray(Msg.ljust(self.LastMsgLen + 1, ' '), 'utf-8')
-		sysex.append(0xF7)
-		device.midiOutSysex(bytes(sysex))
+		1==True
+		#No point in doing this but most callls to this procedure kept for easy comparrison/code compare with "device_MackieCU.py"
+		#sysex = bytearray([0xF0, 0x00, 0x00, 0x66, 0x14, 0x12, (self.LastMsgLen + 1) * Row]) + bytearray(Msg.ljust(self.LastMsgLen + 1, ' '), 'utf-8')
+		#sysex.append(0xF7)
+		#device.midiOutSysex(bytes(sysex))
 
 	# update the CU time display
 	def SendTimeMsg(self, Msg):
@@ -603,14 +617,18 @@ class TMackieCU():
 				device.midiOutMsg(midi.MIDI_CONTROLCHANGE + ((0x4C - m) << 8) + (ord(s_ansi[m]) << 16))
 
 	def UpdateTempMsg(self):
-		self.SendMsg(self.TempMsgT[int(self.TempMsgCount != 0)])
+		0==False
+		#self.SendMsg(self.TempMsgT[int(self.TempMsgCount != 0)])
+		# 20210519 Redirected temporary text output to FL Studio hint panel
+		###################################################################
+
 
 	def OnSendTempMsg(self, Msg, Duration = 1000):
-
-		if self.CurMeterMode == 0:
-			self.TempMsgCount = (Duration // 48) + 1
-		self.TempMsgT[1] = Msg
-		self.TempMsgDirty = True
+		ui.setHintMsg(Msg)
+		#if self.CurMeterMode == 0:
+		#	self.TempMsgCount = (Duration // 48) + 1
+		#self.TempMsgT[1] = Msg
+		#self.TempMsgDirty = True
 
 	def OnUpdateBeatIndicator(self, Value):
 
@@ -620,31 +638,24 @@ class TMackieCU():
 			device.midiOutNewMsg(SyncLEDMsg[Value], 128)
 
 	def UpdateTextDisplay(self):
-
 		s1 = ''
+		s2 = ''
 		for m in range(0, len(self.ColT) - 1):
 			s = ''
+			sa= ''
 			if self.Page == MackieCUPage_Free:
 				s = '  ' + utils.Zeros(self.ColT[m].TrackNum + 1, 2, ' ')
 			else:
 				s = mixer.getTrackName(self.ColT[m].TrackNum, 6)
+			sa='   '+str(self.ColT[m].TrackNum)+' '
 			for n in range(1, 7 - len(s) + 1):
 				s = s + ' '
+			for n in range(1, 7 - len(sa) + 1):
+				sa = sa +' '
 			s1 = s1 + s
+			s2 = s2 + sa
+		self.SendMsg(s1+s2)
 
-		self.TempMsgT[0] = s1
-
-		if self.CurMeterMode == 0:
-			if self.TempMsgCount == 0:
-				self.UpdateTempMsg()
-		else:
-			self.SendMsg(s1, 1)
-
-	def GetSplitMarks(self):
-		s2 = '';
-		for m in range(0, len(self.ColT) - 1):
-			s2 = s2 + '      .'
-		return s2
 
 	def UpdateMeterMode(self):
 
@@ -672,9 +683,7 @@ class TMackieCU():
 		self.ActivityMax = 0xD - int(self.CurMeterMode == 1) * 6
 
 		# meter split marks
-		if self.CurMeterMode == 0:
-			self.SendMsg(self.GetSplitMarks(), 1)
-		else:
+		if self.CurMeterMode != 0:
 			self.UpdateTextDisplay()
 
 		if device.isAssigned():
@@ -1015,8 +1024,6 @@ class TMackieCU():
 			self.TempMsgCount -= 1
 			if self.TempMsgCount == 0:
 				self.UpdateTempMsg()
-				if self.CurMeterMode == 0:
-					self.SendMsg(self.GetSplitMarks(), 1)
 
 	def UpdateLEDs(self):
 
